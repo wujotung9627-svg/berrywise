@@ -1,3 +1,5 @@
+# 必須最先安裝，強制使用 headless 版 OpenCV（避免 libGL/libgthread 錯誤）
+force-opencv-python-headless
 streamlit>=1.32.0
 pillow>=10.0.0
 requests>=2.31.0
