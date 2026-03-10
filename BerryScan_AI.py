@@ -1214,7 +1214,6 @@ Safari → 分享 → 加入主畫面
                     label_visibility="collapsed",
                 )
                 filename = f"草莓園小助手_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                st.markdown('<div id="report-btn-row" style="height:0;overflow:hidden;margin:0;padding:0"></div>', unsafe_allow_html=True)
                 def _reset_for_new_scan():
                     st.session_state.diagnosis_data = None
                     st.session_state.confirmed_disease = None
@@ -1224,6 +1223,7 @@ Safari → 分享 → 加入主畫面
                     st.session_state.upload_error = None
                     st.session_state["_upload_cycle"] = st.session_state.get("_upload_cycle", 0) + 1
                     st.rerun()
+                st.markdown('<div class="report-btn-row">', unsafe_allow_html=True)
                 btn_col1, btn_col2, btn_col3 = st.columns(3)
                 with btn_col1:
                     st.download_button(
@@ -1241,6 +1241,7 @@ Safari → 分享 → 加入主畫面
                 with btn_col3:
                     st.button("🔄 重新整理", key="refresh_report", type="secondary", use_container_width=True,
                              help="重新拍攝／上傳", on_click=_reset_for_new_scan)
+                st.markdown('</div>', unsafe_allow_html=True)
                 if st.session_state.get("_copy_report_text"):
                     esc = json.dumps(st.session_state["_copy_report_text"])
                     st.components.v1.html(f"""

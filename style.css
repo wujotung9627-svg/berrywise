@@ -145,15 +145,78 @@
 .stTextArea textarea:focus { border-color: var(--berry) !important; box-shadow: 0 0 0 2px var(--berry-dim) !important; }
 
 /* Download */
-.stDownloadButton button {
-    width: 100% !important; min-height: var(--touch) !important;
-    border-radius: var(--r) !important; border: 1px solid var(--border-hi) !important;
-    background: var(--card) !important; color: var(--t1) !important;
-    font-size: 14px !important; font-weight: 500 !important;
-    font-family: 'Noto Sans TC', sans-serif !important; transition: all 0.15s !important;
+.stDownloadButton > button {
+    width: 100% !important;
+    min-height: var(--touch) !important;
+    height: var(--touch) !important;
+    line-height: 1 !important;
+    padding: 0 12px !important;
+    border-radius: var(--r) !important;
+    border: 1px solid var(--border-hi) !important;
+    background: var(--card) !important;
+    color: var(--t2) !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    font-family: 'Noto Sans TC', sans-serif !important;
+    transition: all 0.15s !important;
     white-space: nowrap !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
-.stDownloadButton button:hover { background: var(--berry-dim) !important; border-color: var(--berry) !important; }
+.stDownloadButton > button:hover {
+    background: #222 !important;
+    border-color: rgba(255,255,255,0.24) !important;
+    color: var(--t1) !important;
+}
+.stDownloadButton > button:focus { box-shadow: none !important; outline: none !important; }
+
+/* 強制覆蓋 secondary 按鈕的所有 Streamlit 預設狀態 */
+.stButton > button[kind="secondary"],
+[data-testid="stBaseButton-secondary"] {
+    background: var(--card) !important;
+    border: 1px solid var(--border-hi) !important;
+    color: var(--t2) !important;
+    box-shadow: none !important;
+}
+.stButton > button[kind="secondary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover {
+    background: #222 !important;
+    border-color: rgba(255,255,255,0.24) !important;
+    color: var(--t1) !important;
+}
+.stButton > button[kind="secondary"]:focus,
+[data-testid="stBaseButton-secondary"]:focus {
+    box-shadow: none !important; outline: none !important;
+}
+
+/* 報告三按鈕 — 用 class 定位，不依賴不穩定的 :has() 選擇器 */
+.report-btn-row [data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+}
+.report-btn-row [data-testid="stHorizontalBlock"] > * { min-width: 0 !important; }
+.report-btn-row .stButton > button,
+.report-btn-row .stDownloadButton > button {
+    width: 100% !important;
+    min-height: var(--touch) !important;
+    height: var(--touch) !important;
+    background: var(--card) !important;
+    border: 1px solid var(--border-hi) !important;
+    color: var(--t2) !important;
+    box-shadow: none !important;
+}
+.report-btn-row .stButton > button:hover,
+.report-btn-row .stDownloadButton > button:hover {
+    background: #222 !important;
+    border-color: rgba(255,255,255,0.24) !important;
+    color: var(--t1) !important;
+}
+@media (max-width: 480px) {
+    .report-btn-row [data-testid="stHorizontalBlock"] {
+        grid-template-columns: 1fr !important;
+    }
+}
 
 /* 空狀態 */
 .empty-state { text-align: center; padding: 48px 0 32px; }
@@ -195,31 +258,7 @@ section[data-testid="stSidebar"] span { color: var(--t2) !important; font-size: 
 [data-testid="stSidebarCollapseButton"] { color: var(--berry) !important; }
 section[data-testid="stSidebar"] .stButton > button { min-height: 36px !important; height: 36px !important; font-size: 13px !important; }
 
-/* 診斷報告三按鈕：橫式、等寬、等距、同色、文字在框內、RWD（#report-btn-row 為前一個 markdown 的錨點） */
-[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] {
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 6px !important;
-}
-[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] > * {
-    min-width: 0 !important;
-}
-[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] .stButton > button,
-[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] .stDownloadButton button {
-    width: 100% !important;
-    min-height: var(--touch) !important;
-    background: var(--card) !important;
-    border: 1px solid var(--border-hi) !important;
-    color: var(--t2) !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-}
-@media (max-width: 480px) {
-    [data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] {
-        grid-template-columns: 1fr !important;
-    }
-}
+
 /* Input */
 [data-testid="stTextInput"] input {
     background: var(--card) !important; border: 1px solid var(--border-hi) !important;
