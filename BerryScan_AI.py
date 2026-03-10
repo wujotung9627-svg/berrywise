@@ -908,7 +908,7 @@ Safari → 分享 → 加入主畫面
                         with cols[i]:
                             if st.button(
                                 f"{'✓ ' if is_selected else ''}{info['zh_name']}\n{conf:.0%}",
-                                key=f"confirm_ai_{key}",
+                                key=f"confirm_ai_{key}_{i}",
                                 type="primary" if is_selected else "secondary",
                                 width="stretch",
                             ):
