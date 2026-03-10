@@ -1215,15 +1215,11 @@ Safari → 分享 → 加入主畫面
                 )
                 filename = f"草莓園小助手_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                 def _reset_for_new_scan():
-                    st.session_state.diagnosis_data = None
-                    st.session_state.confirmed_disease = None
-                    st.session_state.feedback_state = None
-                    st.session_state.manual_disease = None
-                    st.session_state.groq_suggestion = None
-                    st.session_state.upload_error = None
+                    for k in ["diagnosis_data","confirmed_disease","feedback_state","manual_disease","groq_suggestion","upload_error"]:
+                        st.session_state[k] = None
                     st.session_state["_upload_cycle"] = st.session_state.get("_upload_cycle", 0) + 1
                     st.rerun()
-                st.markdown('<div class="report-btn-row">', unsafe_allow_html=True)
+
                 btn_col1, btn_col2, btn_col3 = st.columns(3)
                 with btn_col1:
                     st.download_button(
@@ -1235,13 +1231,59 @@ Safari → 分享 → 加入主畫面
                         use_container_width=True,
                     )
                 with btn_col2:
-                    if st.button("📋 一鍵複製", key="copy_report", type="secondary", use_container_width=True):
+                    if st.button("📋 一鍵複製", key="copy_report", use_container_width=True):
                         st.session_state["_copy_report_text"] = edited_report
                         st.rerun()
                 with btn_col3:
-                    st.button("🔄 重新整理", key="refresh_report", type="secondary", use_container_width=True,
-                             help="重新拍攝／上傳", on_click=_reset_for_new_scan)
-                st.markdown('</div>', unsafe_allow_html=True)
+                    st.button("🔄 重新整理", key="refresh_report", use_container_width=True,
+                             on_click=_reset_for_new_scan)
+
+                # JS 從 parent document 強制三顆按鈕樣式一致
+                st.components.v1.html("""
+                <script>
+                (function() {
+                    function fixBtns() {
+                        var doc = window.parent.document;
+                        var sel = [
+                            '[data-testid="stDownloadButton"] button',
+                            'button[data-testid="stBaseButton-secondary"]',
+                            'button[data-testid="stBaseButton-secondaryFormSubmit"]',
+                        ].join(',');
+                        var btns = doc.querySelectorAll(sel);
+                        btns.forEach(function(b) {
+                            b.style.cssText = [
+                                'background:#1a1a1a !important',
+                                'border:1px solid rgba(255,255,255,0.16) !important',
+                                'color:rgba(255,255,255,0.5) !important',
+                                'box-shadow:none !important',
+                                'outline:none !important',
+                                'height:46px !important',
+                                'min-height:46px !important',
+                                'border-radius:12px !important',
+                                'font-size:14px !important',
+                                'font-weight:500 !important',
+                                'width:100% !important',
+                                'cursor:pointer !important',
+                            ].join(';');
+                            b.onmouseenter = function(){
+                                this.style.background='#222 !important';
+                                this.style.color='rgba(255,255,255,0.92) !important';
+                            };
+                            b.onmouseleave = function(){
+                                this.style.background='#1a1a1a';
+                                this.style.color='rgba(255,255,255,0.5)';
+                            };
+                        });
+                    }
+                    // 頁面載入後立即跑，也設 observer 防止 Streamlit re-render 後還原
+                    fixBtns();
+                    setTimeout(fixBtns, 300);
+                    setTimeout(fixBtns, 800);
+                    var obs = new MutationObserver(fixBtns);
+                    obs.observe(window.parent.document.body, {childList:true, subtree:true});
+                })();
+                </script>
+                """, height=0)
                 if st.session_state.get("_copy_report_text"):
                     esc = json.dumps(st.session_state["_copy_report_text"])
                     st.components.v1.html(f"""
