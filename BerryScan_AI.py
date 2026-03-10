@@ -616,6 +616,20 @@ def main():
             help="數值越高越嚴格，建議 0.50～0.65",
         )
 
+        if "font_size" not in st.session_state:
+            st.session_state.font_size = 16
+        font_size = st.slider(
+            "🔡 字體大小",
+            min_value=14,
+            max_value=22,
+            value=st.session_state.font_size,
+            step=1,
+            format="%dpx",
+            key="font_size_slider",
+            help="調整介面字體大小，設定會保留",
+        )
+        st.session_state.font_size = font_size
+
         enable_enhance = st.toggle("✨ 戶外強光優化", value=False)
 
         with st.expander("📷 拍攝技巧", expanded=False):
@@ -652,6 +666,25 @@ Safari → 分享 → 加入主畫面
             <span class="footer-version">v2.0</span>
         </div>
         """, unsafe_allow_html=True)
+
+    # 全域字體大小（側邊欄設定會保留）
+    _fs = st.session_state.get("font_size", 16)
+    st.markdown(f"""
+    <style>
+    p, .stMarkdown p, .stMarkdown, div[data-testid="stMarkdownContainer"] p
+        {{ font-size: {_fs}px !important; line-height: 1.7 !important; }}
+    .disease-name {{ font-size: {_fs + 2}px !important; }}
+    .disease-meta {{ font-size: {_fs - 1}px !important; }}
+    .stButton > button {{ font-size: {_fs}px !important; min-height: {max(48, _fs * 3)}px !important; }}
+    [data-testid="stExpander"] summary {{ font-size: {_fs - 1}px !important; min-height: {max(44, _fs * 2 + 14)}px !important; }}
+    pre {{ font-size: {_fs - 2}px !important; }}
+    label {{ font-size: {_fs - 1}px !important; }}
+    .empty-text {{ font-size: {_fs + 1}px !important; }}
+    .empty-hint {{ font-size: {_fs - 2}px !important; }}
+    [data-testid="stMetricValue"] {{ font-size: {_fs + 8}px !important; }}
+    [data-testid="stMetric"] label {{ font-size: {_fs - 3}px !important; }}
+    </style>
+    """, unsafe_allow_html=True)
 
     # 固定使用預設 API Key / Model ID
     api_key  = get_api_key()
@@ -762,34 +795,6 @@ Safari → 分享 → 加入主畫面
                 with c3:
                     best = max((p.get("confidence", 0) for p in valid_preds), default=None)
                     st.metric("最高確信度", f"{best:.0%}" if best else "—")
-
-                # ── 字體大小調整 ──
-                if "font_size" not in st.session_state:
-                    st.session_state.font_size = 16
-                font_size = st.slider(
-                    "🔡 字體大小",
-                    min_value=14, max_value=22,
-                    value=st.session_state.font_size,
-                    step=1, format="%dpx",
-                    key="font_slider",
-                )
-                st.session_state.font_size = font_size
-                st.markdown(f"""
-                <style>
-                p, .stMarkdown p, .stMarkdown, div[data-testid="stMarkdownContainer"] p
-                    {{ font-size: {font_size}px !important; line-height: 1.7 !important; }}
-                .disease-name {{ font-size: {font_size + 2}px !important; }}
-                .disease-meta {{ font-size: {font_size - 1}px !important; }}
-                .stButton > button {{ font-size: {font_size}px !important; min-height: {max(48, font_size * 3)}px !important; }}
-                [data-testid="stExpander"] summary {{ font-size: {font_size - 1}px !important; min-height: {max(44, font_size * 2 + 14)}px !important; }}
-                pre {{ font-size: {font_size - 2}px !important; }}
-                label {{ font-size: {font_size - 1}px !important; }}
-                .empty-text {{ font-size: {font_size + 1}px !important; }}
-                .empty-hint {{ font-size: {font_size - 2}px !important; }}
-                [data-testid="stMetricValue"] {{ font-size: {font_size + 8}px !important; }}
-                [data-testid="stMetric"] label {{ font-size: {font_size - 3}px !important; }}
-                </style>
-                """, unsafe_allow_html=True)
 
                 # ── 低確信度：顯示手動選擇區 ──
                 if valid_preds and not high_preds:
