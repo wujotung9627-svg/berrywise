@@ -45,12 +45,14 @@
 [data-testid="stColumn"] { padding: 0 !important; }
 
 /* 所有按鈕 — 統一基礎樣式，讓 primary/secondary 高度完全一致 */
-.stButton > button {
+.stButton > button,
+.stDownloadButton > button {
     width: 100% !important;
     min-height: var(--touch) !important;
     height: var(--touch) !important;
     line-height: 1 !important;
     padding: 0 12px !important;
+    white-space: nowrap !important;
     border-radius: var(--r) !important;
     font-family: 'Noto Sans TC', sans-serif !important;
     font-size: 14px !important;
@@ -149,6 +151,7 @@
     background: var(--card) !important; color: var(--t1) !important;
     font-size: 14px !important; font-weight: 500 !important;
     font-family: 'Noto Sans TC', sans-serif !important; transition: all 0.15s !important;
+    white-space: nowrap !important;
 }
 .stDownloadButton button:hover { background: var(--berry-dim) !important; border-color: var(--berry) !important; }
 
@@ -192,6 +195,31 @@ section[data-testid="stSidebar"] span { color: var(--t2) !important; font-size: 
 [data-testid="stSidebarCollapseButton"] { color: var(--berry) !important; }
 section[data-testid="stSidebar"] .stButton > button { min-height: 36px !important; height: 36px !important; font-size: 13px !important; }
 
+/* 診斷報告三按鈕：橫式、等寬、等距、同色、文字在框內、RWD（#report-btn-row 為前一個 markdown 的錨點） */
+[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+}
+[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] > * {
+    min-width: 0 !important;
+}
+[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] .stButton > button,
+[data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] .stDownloadButton button {
+    width: 100% !important;
+    min-height: var(--touch) !important;
+    background: var(--card) !important;
+    border: 1px solid var(--border-hi) !important;
+    color: var(--t2) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+@media (max-width: 480px) {
+    [data-testid="stVerticalBlock"]:has(#report-btn-row) + [data-testid="stVerticalBlock"] [data-testid="stHorizontalBlock"] {
+        grid-template-columns: 1fr !important;
+    }
+}
 /* Input */
 [data-testid="stTextInput"] input {
     background: var(--card) !important; border: 1px solid var(--border-hi) !important;
