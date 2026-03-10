@@ -13,7 +13,11 @@ import base64
 import datetime
 import requests
 import numpy as np
-import cv2
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except Exception:
+    CV2_AVAILABLE = False
 from pathlib import Path
 
 # ────────────────────────────────────────────────────────────
@@ -371,6 +375,8 @@ def _unsharp(img_np, amount=1.2):
     return np.clip(sharp, 0, 255).astype(np.uint8)
 
 def enhance_outdoor_image(pil_image: Image.Image) -> Image.Image:
+    if not CV2_AVAILABLE:
+        return pil_image  # cv2 不可用時直接回傳原圖
     img = np.array(pil_image.convert("RGB"))
     brightness = np.mean(img)
     blur_score = cv2.Laplacian(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), cv2.CV_64F).var()
