@@ -440,43 +440,79 @@ def get_groq_key():
     except Exception:
         return ""
 
-def ask_groq_for_disease_suggestion(mode: str, top_candidates: list, groq_key: str) -> str:
-    """依情境呼叫 Groq 推測可能病害。回傳 LLM 文字或空字串（失敗時）。"""
+def ask_groq_vision(pil_image: Image.Image, mode: str, yolo_top: dict | None, groq_key: str) -> dict:
+    """
+    用 Groq Vision（llama-3.2-11b-vision-preview）直接看圖診斷。
+    回傳 {"groq_zh": str, "agree": bool|None, "groq_raw": str}
+    agree=True 代表 Groq 與 YOLO 一致，False 代表不一致，None 代表 YOLO 無結果
+    """
+    empty = {"groq_zh": "", "agree": None, "groq_raw": ""}
     if not groq_key:
-        return ""
+        return empty
     try:
-        from groq import Groq  # type: ignore[reportMissingImports]
+        from groq import Groq
         client = Groq(api_key=groq_key)
 
+        # 把圖片壓成 base64（限制大小加速 API）
+        buf = io.BytesIO()
+        img_small = pil_image.copy()
+        img_small.thumbnail((800, 800), Image.LANCZOS)
+        img_small.save(buf, format="JPEG", quality=82)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
         part = "葉片" if mode == "🌿 葉片診斷" else "果實"
-        if not top_candidates:
-            prompt = f"""草莓{part}影像分析：AI 視覺模型未偵測到已訓練的病害。
-請根據常見草莓病害知識，列出 3～5 種可能符合的病害，每項包含：
-1. 病害名稱（中英文）
-2. 典型症狀（簡短）
-3. 與其他病害的區分要點
-用繁體中文回答，條列清楚。"""
+
+        # 告訴 Groq YOLO 的結果，讓它做交叉驗證
+        if yolo_top:
+            yolo_name = get_advice(yolo_top.get("class",""))["zh_name"]
+            yolo_conf = yolo_top.get("confidence", 0)
+            cross_note = f"\n\n【參考資訊】視覺偵測模型（YOLOv11）判斷此圖最可能為「{yolo_name}」（確信度 {yolo_conf:.0%}）。請你獨立看圖判斷，並說明你是否認同，以及原因。"
         else:
-            cand_str = "、".join(
-                f"{get_advice(p.get('class','unknown'))['zh_name']}（{p.get('confidence',0):.0%}）"
-                for p in top_candidates[:5]
-            )
-            prompt = f"""草莓{part}影像，AI 偵測到以下候選（確信度偏低）：{cand_str}
-請根據這些症狀推測最可能為何種病害，並建議如何目測區分、複拍時可注意的特徵。
-用繁體中文回答，簡潔實用。"""
+            cross_note = "\n\n【參考資訊】視覺偵測模型未偵測到已知病害，請你獨立判斷。"
+
+        prompt = (
+            f"這是一張台灣草莓{part}的照片。請你仔細觀察圖片中的病斑、顏色、紋理等特徵，"
+            f"判斷最可能是哪種草莓病害（或健康植株）。\n"
+            f"請用繁體中文回答，格式如下：\n"
+            f"【判斷結果】（病害名稱，若健康則填「健康植株」）\n"
+            f"【觀察到的特徵】（條列你看到的視覺線索，2～4點）\n"
+            f"【農民建議】（1～2句簡短處置建議）"
+            f"{cross_note}"
+        )
 
         resp = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "你是草莓病害診斷輔助專家，協助農民根據症狀推測可能病害。回答簡潔、實用、繁體中文。"},
-                {"role": "user", "content": prompt},
-            ],
-            model="llama-3.3-70b-versatile",
-            temperature=0.4,
-            max_tokens=800,
+            model="llama-3.2-11b-vision-preview",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+            temperature=0.3,
+            max_tokens=600,
         )
-        return resp.choices[0].message.content.strip() if resp.choices else ""
+        raw = resp.choices[0].message.content.strip() if resp.choices else ""
+        if not raw:
+            return empty
+
+        # 判斷是否與 YOLO 一致
+        agree = None
+        if yolo_top:
+            yolo_en = yolo_top.get("class", "").lower()
+            yolo_info = get_advice(yolo_en)
+            # 檢查 Groq 回答裡有沒有提到同一種病害（中文或英文）
+            raw_lower = raw.lower()
+            agree = (
+                yolo_info["zh_name"] in raw or
+                yolo_info["en_name"].lower() in raw_lower or
+                yolo_en in raw_lower
+            )
+
+        return {"groq_zh": raw, "agree": agree, "groq_raw": raw}
+
     except Exception:
-        return ""
+        return empty
 
 # ────────────────────────────────────────────────────────────
 #  繪製偵測框
@@ -822,7 +858,7 @@ Safari → 分享 → 加入主畫面
                 st.image(processed_image, use_container_width=True)
         else:
             processed_image = captured_image
-            st.image(captured_image, use_container_width=True, caption="原始影像")
+            st.image(captured_image, use_container_width=True)
 
         # 診斷按鈕
         st.markdown('<div class="btn-spacer"></div>', unsafe_allow_html=True)
@@ -836,17 +872,14 @@ Safari → 分享 → 加入主畫面
             loading_placeholder = st.empty()
             loading_placeholder.markdown('<div class="ai-loading-bar"><div class="ai-loading-shimmer"></div></div>', unsafe_allow_html=True)
 
-            with st.spinner("AI 分析中（模型 + LLM）..."):
+            with st.spinner("🔬 AI 診斷中，請稍候..."):
                 result = run_inference(processed_image, api_key, model_id, confidence_threshold)
-                groq_text = ""
+                groq_result = {"groq_zh": "", "agree": None, "groq_raw": ""}
                 if result is not None and groq_key:
-                    preds = result.get("predictions", [])
-                    preds_sorted = sorted(preds, key=lambda p: p.get("confidence", 0), reverse=True)
-                    valid = [p for p in preds_sorted if p.get("confidence", 0) >= confidence_threshold]
-                    best = max((p.get("confidence", 0) for p in valid), default=0)
-                    if not preds_sorted or not valid or best < 0.75:
-                        groq_text = ask_groq_for_disease_suggestion(mode, preds_sorted[:5], groq_key)
-                st.session_state.groq_suggestion = groq_text
+                    preds_sorted = sorted(result.get("predictions", []), key=lambda p: p.get("confidence", 0), reverse=True)
+                    yolo_top = preds_sorted[0] if preds_sorted else None
+                    groq_result = ask_groq_vision(processed_image, mode, yolo_top, groq_key)
+                st.session_state.groq_suggestion = groq_result
                 if result is not None:
                     st.session_state.diagnosis_data = {
                         "result": result,
@@ -920,7 +953,7 @@ Safari → 分享 → 加入主畫面
                         )
 
                 # 其他病害（收合）
-                with st.expander("其他病害選項"):
+                with st.expander("🔍 其他病害選項"):
                     cols2 = st.columns(2)
                     for i, key in enumerate(others):
                         info = ADVICE_DB[key]
@@ -1048,12 +1081,8 @@ Safari → 分享 → 加入主畫面
                         """, unsafe_allow_html=True)
                     with h_col2:
                         def _reset_for_new_scan():
-                            st.session_state.diagnosis_data = None
-                            st.session_state.confirmed_disease = None
-                            st.session_state.feedback_state = None
-                            st.session_state.manual_disease = None
-                            st.session_state.groq_suggestion = None
-                            st.session_state.upload_error = None
+                            for k in ["diagnosis_data","confirmed_disease","feedback_state","manual_disease","groq_suggestion","upload_error"]:
+                                st.session_state[k] = None
                             st.session_state["_upload_cycle"] = st.session_state.get("_upload_cycle", 0) + 1
                             st.rerun()
                         st.button("🔄 重新整理", key="refresh_new_scan", help="重新拍攝／上傳",
@@ -1129,14 +1158,28 @@ Safari → 分享 → 加入主畫面
                         </div>
                         """, unsafe_allow_html=True)
 
-                # ── LLM 輔助推測（診斷時已一併執行）──
-            if st.session_state.get("groq_suggestion"):
-                txt = st.session_state.groq_suggestion.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+                # ── Groq Vision 交叉驗證結果 ──
+            groq_result = st.session_state.get("groq_suggestion") or {}
+            groq_txt = groq_result.get("groq_zh", "") if isinstance(groq_result, dict) else ""
+            if groq_txt:
+                agree = groq_result.get("agree", None) if isinstance(groq_result, dict) else None
+                if agree is True:
+                    badge = '<span style="background:rgba(39,174,96,0.2);color:#6dbe91;border:1px solid rgba(39,174,96,0.3);border-radius:6px;padding:2px 10px;font-size:11px;font-weight:600;">✅ 視覺模型一致</span>'
+                elif agree is False:
+                    badge = '<span style="background:rgba(255,165,0,0.15);color:#f5a623;border:1px solid rgba(255,165,0,0.3);border-radius:6px;padding:2px 10px;font-size:11px;font-weight:600;">⚠️ 視覺模型有異議</span>'
+                else:
+                    badge = '<span style="background:rgba(52,152,219,0.15);color:#5dade2;border:1px solid rgba(52,152,219,0.3);border-radius:6px;padding:2px 10px;font-size:11px;font-weight:600;">👁️ 視覺模型獨立判斷</span>'
+
+                escaped = groq_txt.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
                 st.markdown(f"""
-                <div style="background:rgba(155,89,182,0.12);border:1px solid rgba(155,89,182,0.35);
-                border-radius:12px;padding:14px 16px;margin:10px 0;font-size:14px;line-height:1.7;
-                color:rgba(255,255,255,0.9);">
-                {txt}
+                <div style="background:rgba(155,89,182,0.08);border:1px solid rgba(155,89,182,0.3);
+                border-radius:12px;padding:14px 16px;margin:10px 0;">
+                <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px;">
+                🧠 Groq Vision 交叉驗證　{badge}
+                </div>
+                <div style="font-size:13px;line-height:1.8;color:rgba(255,255,255,0.85);">
+                {escaped}
+                </div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1189,13 +1232,14 @@ Safari → 分享 → 加入主畫面
                         file_name=filename,
                         mime="text/plain",
                         key="dl_report",
+                        use_container_width=True,
                     )
                 with btn_col2:
-                    if st.button("📋 一鍵複製", key="copy_report", type="secondary"):
+                    if st.button("📋 一鍵複製", key="copy_report", type="secondary", use_container_width=True):
                         st.session_state["_copy_report_text"] = edited_report
                         st.rerun()
                 with btn_col3:
-                    st.button("🔄 重新整理", key="refresh_report", type="secondary",
+                    st.button("🔄 重新整理", key="refresh_report", type="secondary", use_container_width=True,
                              help="重新拍攝／上傳", on_click=_reset_for_new_scan)
                 if st.session_state.get("_copy_report_text"):
                     esc = json.dumps(st.session_state["_copy_report_text"])
