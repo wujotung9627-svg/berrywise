@@ -615,7 +615,8 @@ def main():
             format="%.2f",
             help="數值越高越嚴格，建議 0.50～0.65",
         )
-        enable_enhance = st.toggle("✨ 戶外強光優化", value=True)
+
+        enable_enhance = st.toggle("✨ 戶外強光優化", value=False)
 
         with st.expander("📷 拍攝技巧", expanded=False):
             st.markdown("""
@@ -736,6 +737,7 @@ Safari → 分享 → 加入主畫面
         if st.button("🔬 開始 AI 診斷", type="primary", width="stretch"):
             st.session_state.feedback_state = None
             st.session_state.manual_disease = None
+            st.session_state.confirmed_disease = None
             loading_placeholder = st.empty()
             loading_placeholder.markdown('<div class="ai-loading-bar"><div class="ai-loading-shimmer"></div></div>', unsafe_allow_html=True)
 
@@ -760,6 +762,34 @@ Safari → 分享 → 加入主畫面
                 with c3:
                     best = max((p.get("confidence", 0) for p in valid_preds), default=None)
                     st.metric("最高確信度", f"{best:.0%}" if best else "—")
+
+                # ── 字體大小調整 ──
+                if "font_size" not in st.session_state:
+                    st.session_state.font_size = 16
+                font_size = st.slider(
+                    "🔡 字體大小",
+                    min_value=14, max_value=22,
+                    value=st.session_state.font_size,
+                    step=1, format="%dpx",
+                    key="font_slider",
+                )
+                st.session_state.font_size = font_size
+                st.markdown(f"""
+                <style>
+                p, .stMarkdown p, .stMarkdown, div[data-testid="stMarkdownContainer"] p
+                    {{ font-size: {font_size}px !important; line-height: 1.7 !important; }}
+                .disease-name {{ font-size: {font_size + 2}px !important; }}
+                .disease-meta {{ font-size: {font_size - 1}px !important; }}
+                .stButton > button {{ font-size: {font_size}px !important; min-height: {max(48, font_size * 3)}px !important; }}
+                [data-testid="stExpander"] summary {{ font-size: {font_size - 1}px !important; min-height: {max(44, font_size * 2 + 14)}px !important; }}
+                pre {{ font-size: {font_size - 2}px !important; }}
+                label {{ font-size: {font_size - 1}px !important; }}
+                .empty-text {{ font-size: {font_size + 1}px !important; }}
+                .empty-hint {{ font-size: {font_size - 2}px !important; }}
+                [data-testid="stMetricValue"] {{ font-size: {font_size + 8}px !important; }}
+                [data-testid="stMetric"] label {{ font-size: {font_size - 3}px !important; }}
+                </style>
+                """, unsafe_allow_html=True)
 
                 # ── 低確信度：顯示手動選擇區 ──
                 if valid_preds and not high_preds:
@@ -846,26 +876,132 @@ Safari → 分享 → 加入主畫面
                 annotated = draw_detections(processed_image.copy(), predictions, confidence_threshold)
                 st.image(annotated, width="stretch")
 
-                # ── 診斷詳情（高可信時顯示）──
-                if high_preds:
-                    st.markdown("**診斷詳情**")
-                    for pred in high_preds:
-                        info = get_advice(pred.get("class", "unknown"))
+                # ══════════════════════════════════════════════
+                # ── 診斷結果 + 農民確認（統一流程）──
+                # ══════════════════════════════════════════════
+                st.markdown("---")
+                st.markdown("""
+                <div style="font-size:15px;font-weight:700;color:rgba(255,255,255,0.6);
+                margin:4px 0 10px;letter-spacing:0.3px;">
+                ✅ 這張圖是哪種病害？請點選確認
+                </div>
+                <div style="font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:12px;">
+                點選後系統將自動記錄並用於模型訓練
+                </div>
+                """, unsafe_allow_html=True)
+
+                confirmed = st.session_state.get("confirmed_disease")
+                feedback_done = st.session_state.get("feedback_state")
+
+                # ── AI 偵測到的候選（依確信度排列）──
+                if predictions_sorted:
+                    st.markdown(f"<div style='font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:6px;'>🤖 AI 偵測到的病害</div>", unsafe_allow_html=True)
+                    ai_keys = [p.get("class","").lower() for p in predictions_sorted]
+                    n_ai = len(predictions_sorted)
+                    cols = st.columns(min(n_ai, 3))
+                    for i, pred in enumerate(predictions_sorted[:3]):
+                        info = get_advice(pred.get("class","unknown"))
                         conf = pred.get("confidence", 0)
-                        st.markdown(f"""
-                        <div class="disease-card" style="border-left:4px solid {info['color']}">
-                            <div class="disease-name">{info['zh_name']} <span class="disease-en">({info['en_name']})</span>
-                            <span style="font-size:11px;background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:6px;margin-left:6px;">高可信</span></div>
-                            <div class="disease-meta">{info['severity']} &nbsp;·&nbsp; 確信度 {conf:.1%}</div>
+                        key  = pred.get("class","").lower()
+                        is_selected = confirmed == key
+                        badge_color = "#2ecc71" if conf >= HIGH_CONF else "#f5a623"
+                        with cols[i]:
+                            if st.button(
+                                f"{'✓ ' if is_selected else ''}{info['zh_name']}\n{conf:.0%}",
+                                key=f"confirm_ai_{key}",
+                                type="primary" if is_selected else "secondary",
+                                width="stretch",
+                            ):
+                                st.session_state.confirmed_disease = key
+                                st.session_state.feedback_state = None
+                                st.rerun()
+
+                # ── 全部 7 種病害選項（收合）──
+                st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+                with st.expander("🔍 不在上方？點此選擇其他病害"):
+                    all_keys = list(ADVICE_DB.keys())
+                    cols2 = st.columns(2)
+                    for i, key in enumerate(all_keys):
+                        info = ADVICE_DB[key]
+                        is_selected = confirmed == key
+                        with cols2[i % 2]:
+                            if st.button(
+                                f"{'✓ ' if is_selected else ''}{info['zh_name']}",
+                                key=f"confirm_all_{key}",
+                                type="primary" if is_selected else "secondary",
+                                width="stretch",
+                            ):
+                                st.session_state.confirmed_disease = key
+                                st.session_state.feedback_state = None
+                                st.rerun()
+
+                    # 健康植株選項
+                    is_healthy = confirmed == "healthy"
+                    if st.button(
+                        f"{'✓ ' if is_healthy else ''}🌱 健康植株（無病害）",
+                        key="confirm_healthy",
+                        type="primary" if is_healthy else "secondary",
+                        width="stretch",
+                    ):
+                        st.session_state.confirmed_disease = "healthy"
+                        st.session_state.feedback_state = None
+                        st.rerun()
+
+                # ── 確認後顯示詳情 + 上傳 Roboflow ──
+                if confirmed:
+                    st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+
+                    if confirmed == "healthy":
+                        st.markdown("""
+                        <div class="disease-card" style="border-left:4px solid #2ecc71;">
+                            <div class="disease-name">🌱 健康植株</div>
+                            <div class="disease-meta">無明顯病害特徵</div>
                         </div>
                         """, unsafe_allow_html=True)
-                        confused = info.get("confused_with", "")
+                        conf_label = "healthy"
+                    elif confirmed in ADVICE_DB:
+                        info = ADVICE_DB[confirmed]
+                        conf_label = info.get("en_name", confirmed)
+                        st.markdown(f"""
+                        <div class="disease-card" style="border-left:4px solid {info['color']};">
+                            <div class="disease-name">{info['zh_name']} <span class="disease-en">({info['en_name']})</span>
+                            <span style="font-size:11px;background:rgba(52,152,219,0.2);color:#5dade2;
+                            padding:2px 8px;border-radius:6px;margin-left:6px;">農民確認</span></div>
+                            <div class="disease-meta">{info['severity']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        confused = info.get("confused_with","")
                         if confused:
-                            st.markdown(f"<div style='font-size:12px;color:rgba(255,200,100,0.7);padding:2px 0 6px;'>⚡ 易混淆：{confused}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size:12px;color:rgba(255,200,100,0.7);padding:3px 0 4px;'>⚡ 易混淆：{confused}</div>", unsafe_allow_html=True)
                         with st.expander("🔍 目測確認特徵"):
                             st.markdown(f"<pre style='font-size:12px;color:rgba(255,255,255,0.7);white-space:pre-wrap;background:none;border:none;padding:0;'>{info.get('visual_check','')}</pre>", unsafe_allow_html=True)
                         with st.expander("📋 農事建議"):
                             st.markdown(f"<pre style='font-size:12px;color:rgba(255,255,255,0.75);white-space:pre-wrap;background:none;border:none;padding:0;'>{info['advice']}</pre>", unsafe_allow_html=True)
+                    else:
+                        conf_label = confirmed
+
+                    # ── 上傳 Roboflow ──
+                    st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+                    if feedback_done == "uploaded":
+                        st.markdown("""
+                        <div style="background:rgba(52,152,219,0.08);border:1px solid rgba(52,152,219,0.2);
+                        border-radius:10px;padding:12px 14px;font-size:13px;color:#5dade2;">
+                        🚀 感謝您的協助！這張圖片將被用於 BerryWise 的下一次自我進化訓練。
+                        </div>
+                        """, unsafe_allow_html=True)
+                    elif feedback_done == "upload_fail":
+                        if st.button("⚠️ 上傳失敗，點此重試", key="retry_upload", type="secondary", width="stretch"):
+                            with st.spinner("上傳中..."):
+                                ok = upload_to_roboflow(processed_image, api_key, suggested_label=conf_label)
+                            st.session_state.feedback_state = "uploaded" if ok else "upload_fail"
+                            st.rerun()
+                    else:
+                        if st.button("📤 送出確認並協助訓練", key="upload_confirmed", type="primary", width="stretch"):
+                            with st.spinner("上傳中..."):
+                                ok = upload_to_roboflow(processed_image, api_key, suggested_label=conf_label)
+                            st.session_state.feedback_state = "uploaded" if ok else "upload_fail"
+                            st.rerun()
+
                 elif not predictions:
                     uncovered = UNCOVERED_LEAF if st.session_state.mode == 0 else UNCOVERED_FRUIT
                     st.markdown("""
@@ -877,7 +1013,6 @@ Safari → 分享 → 加入主畫面
                     以下為模型目前未涵蓋的常見病害，請對照目測特徵自行確認：
                     </div></div>
                     """, unsafe_allow_html=True)
-
                     for d in uncovered:
                         with st.expander(f"📌 {d['zh_name']}　{d['en_name']}"):
                             st.markdown(f"""
@@ -903,59 +1038,6 @@ Safari → 分享 → 加入主畫面
                                 <div class="disease-meta">確信度 {conf:.1%}</div>
                             </div>
                             """, unsafe_allow_html=True)
-
-                # ── 📣 診斷反饋（協助模型進化）──
-                st.markdown("""
-                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
-                border-radius:12px;padding:14px 16px;margin:14px 0 4px;">
-                <div style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.7);margin-bottom:10px;">
-                🧬 AI 診斷準確嗎？
-                </div>
-                """, unsafe_allow_html=True)
-
-                fb_state = st.session_state.get("feedback_state", None)
-
-                if fb_state == "correct":
-                    st.markdown("""
-                    <div style="color:#2ecc71;font-size:13px;padding:4px 0 8px;">
-                    ✅ 感謝您的確認！持續回饋有助於提升診斷準確率。
-                    </div>
-                    """, unsafe_allow_html=True)
-                elif fb_state == "uploaded":
-                    st.markdown("""
-                    <div style="color:#5dade2;font-size:13px;padding:4px 0 8px;">
-                    🚀 感謝您的協助！這張圖片將被用於 BerryWise 的下一次自我進化訓練。
-                    </div>
-                    """, unsafe_allow_html=True)
-                elif fb_state == "upload_fail":
-                    st.markdown("""
-                    <div style="color:#f5a623;font-size:13px;padding:4px 0 8px;">
-                    ⚠️ 上傳失敗，請確認網路連線後重試。
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    fb1, fb2 = st.columns(2)
-                    with fb1:
-                        if st.button("👍 準確", key="fb_correct", width="stretch", type="secondary"):
-                            st.session_state.feedback_state = "correct"
-                            st.rerun()
-                    with fb2:
-                        if st.button("❌ 有誤，協助修正", key="fb_wrong", width="stretch", type="secondary"):
-                            # 取得當前最佳病害標籤
-                            manual_k = st.session_state.get("manual_disease")
-                            if manual_k:
-                                suggested = ADVICE_DB[manual_k]["en_name"]
-                            elif valid_preds:
-                                suggested = valid_preds[0].get("class", "")
-                            else:
-                                suggested = "unlabeled"
-
-                            with st.spinner("上傳中..."):
-                                ok = upload_to_roboflow(processed_image, api_key, suggested_label=suggested)
-                            st.session_state.feedback_state = "uploaded" if ok else "upload_fail"
-                            st.rerun()
-
-                st.markdown("</div>", unsafe_allow_html=True)
 
                 # ── 可編輯診斷報告（納入手動選擇）──
                 st.markdown("**📋 診斷報告**")
