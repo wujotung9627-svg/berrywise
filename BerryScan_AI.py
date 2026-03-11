@@ -406,27 +406,44 @@ def enhance_outdoor_image(pil_image: Image.Image) -> Image.Image:
     return Image.fromarray(img)
 
 # ────────────────────────────────────────────────────────────
-#  Roboflow API（inference_sdk）
+#  Roboflow API（純 requests，不依賴 inference_sdk / cv2 / libGL）
 # ────────────────────────────────────────────────────────────
 def run_inference(pil_image: Image.Image, api_key: str, model_id: str, confidence: float):
+    """
+    直接呼叫 Roboflow Hosted Inference REST API。
+    不使用 inference_sdk，徹底避免 libGL / cv2 相依問題。
+    回傳格式與 inference_sdk 相同：{"predictions": [...], ...}
+    """
     try:
-        from inference_sdk import InferenceHTTPClient
-        import tempfile, os
+        # 圖片轉 base64
+        buf = io.BytesIO()
+        pil_image.save(buf, format="JPEG", quality=90)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-        # 存成暫存檔再傳入
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            tmp_path = tmp.name
-            pil_image.save(tmp_path, format="JPEG", quality=90)
+        # Roboflow Hosted Inference endpoint
+        url = f"https://detect.roboflow.com/{model_id}"
+        params = {
+            "api_key": api_key,
+            "confidence": int(confidence * 100),
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        resp = requests.post(url, params=params, data=b64, headers=headers, timeout=30)
 
-        client = InferenceHTTPClient(
-            api_url="https://detect.roboflow.com",
-            api_key=api_key,
-        )
-        result = client.infer(tmp_path, model_id=model_id)
-        os.unlink(tmp_path)
-        # 全部回傳，由 UI 層決定顯示策略
+        if resp.status_code != 200:
+            st.error(f"❌ 診斷失敗（HTTP {resp.status_code}）：{resp.text[:200]}")
+            return None
+
+        result = resp.json()
+
+        # 確保 predictions 欄位存在
+        if "predictions" not in result:
+            result["predictions"] = []
+
         return result
 
+    except requests.exceptions.Timeout:
+        st.error("❌ 診斷逾時，請檢查網路連線後重試")
+        return None
     except Exception as e:
         st.error(f"❌ 診斷失敗：{e}")
         return None
@@ -889,9 +906,7 @@ Safari → 分享 → 加入主畫面
                     }
 
             loading_placeholder.empty()
-            if st.session_state.get("diagnosis_data") is not None:
-                st.rerun()
-            # 若 result is None，run_inference 已顯示 st.error，不 rerun 讓錯誤訊息留在畫面上
+            st.rerun()
 
         # ── 有診斷結果時顯示（含選擇變更後報告動態更新）──
         diag = st.session_state.get("diagnosis_data")
