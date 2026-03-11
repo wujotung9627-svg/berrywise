@@ -889,7 +889,9 @@ Safari → 分享 → 加入主畫面
                     }
 
             loading_placeholder.empty()
-            st.rerun()
+            if st.session_state.get("diagnosis_data") is not None:
+                st.rerun()
+            # 若 result is None，run_inference 已顯示 st.error，不 rerun 讓錯誤訊息留在畫面上
 
         # ── 有診斷結果時顯示（含選擇變更後報告動態更新）──
         diag = st.session_state.get("diagnosis_data")
