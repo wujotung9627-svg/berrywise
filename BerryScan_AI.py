@@ -24,13 +24,32 @@ except Exception:
 # ──────────────────────────────────────────────────────────────
 #  API Keys & 常數
 # ──────────────────────────────────────────────────────────────
-def get_api_key():
-    try:    return st.secrets["ROBOFLOW_API_KEY"]
-    except: return "VOhMaw0JTEKqryA0pM3p"
+def get_api_key() -> str:
+    """從 Streamlit secrets 讀取 Roboflow API Key。
+    不提供 fallback，缺少設定時明確告知使用者，避免憑證暴露於原始碼。
+    """
+    try:
+        key = st.secrets["ROBOFLOW_API_KEY"]
+        if not key or not isinstance(key, str):
+            raise KeyError
+        return key
+    except (KeyError, FileNotFoundError):
+        st.error(
+            "⚠️ **缺少 Roboflow API Key**\n\n"
+            "請在 Streamlit Cloud → Settings → Secrets 加入：\n"
+            "```\nROBOFLOW_API_KEY = \"your-api-key\"\n```"
+        )
+        st.stop()
 
-def get_groq_key():
-    try:    return st.secrets["GROQ_API_KEY"]
-    except: return ""
+def get_groq_key() -> str:
+    """從 Streamlit secrets 讀取 Groq API Key。
+    Groq 為選配功能，未設定時回傳空字串並靜默停用交叉驗證。
+    """
+    try:
+        key = st.secrets.get("GROQ_API_KEY", "")
+        return key if isinstance(key, str) else ""
+    except Exception:
+        return ""
 
 DEFAULT_MODEL_ID   = "-strawberry-disease-hrfcc/2"
 ROBOFLOW_DATASET   = "-strawberry-disease-hrfcc"
@@ -331,14 +350,31 @@ ADVICE_DB = {
     },
 }
 
+def _html_escape(text: str) -> str:
+    """HTML-escape 外部來源字串，防止 XSS 注入。"""
+    return (str(text)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#x27;"))
+
 def get_advice(label: str) -> dict:
+    """取得病害建議資料。
+    若 label 不在 ADVICE_DB（即來自 Roboflow 的未知標籤），
+    將 zh_name / en_name 進行 HTML escape，防止未知標籤注入 HTML。
+    """
     key = label.lower().strip()
-    return ADVICE_DB.get(key, {
-        "zh_name": label, "en_name": label,
+    if key in ADVICE_DB:
+        return ADVICE_DB[key]
+    # 外部來源的 label 必須 escape 後才能放入 HTML 模板
+    safe_label = _html_escape(label)
+    return {
+        "zh_name": safe_label, "en_name": safe_label,
         "severity": "❓ 待確認", "color": "#3498DB", "icon": "❓",
         "visual_check": "", "confused_with": "",
         "advice": "本系統尚未收錄此標籤，請對照目測特徵確認病害種類。",
-    })
+    }
 
 UNCOVERED = {
     0: [  # 葉片
@@ -1269,14 +1305,17 @@ def main():
                           use_container_width=True, on_click=_reset_all)
 
             if st.session_state.get("_copy_txt"):
-                esc = json.dumps(st.session_state["_copy_txt"])
-                st.components.v1.html(
-                    f"<script>(function(){{var t={esc};"
-                    f"if(navigator.clipboard)navigator.clipboard.writeText(t);"
-                    f"}})();</script>",
-                    height=0,
-                )
-                st.toast("✓ 已複製到剪貼簿", icon="📋")
+                # 確認 session 值為純字串再注入，防止 session 被污染後執行任意 JS
+                copy_val = st.session_state["_copy_txt"]
+                if isinstance(copy_val, str):
+                    esc = json.dumps(copy_val)
+                    st.components.v1.html(
+                        f"<script>(function(){{var t={esc};"
+                        f"if(navigator.clipboard)navigator.clipboard.writeText(t);"
+                        f"}})();</script>",
+                        height=0,
+                    )
+                    st.toast("✓ 已複製到剪貼簿", icon="📋")
                 del st.session_state["_copy_txt"]
 
     # ════════════════════════════════════════════════════════
